@@ -22,7 +22,7 @@ typedef NS_ENUM(NSInteger, RCTCameraCaptureTarget) {
     RCTCameraCaptureTargetCameraRoll = 3
 };
 
-AVCaptureStillImageOutput *stillImageOutput;
+AVCaptureStillImageOutput *stillImageOutput = nil;
 
 -(void) takePicture:(NSDictionary *)options
     successCallback:(RCTResponseSenderBlock)successCallback
@@ -35,6 +35,7 @@ AVCaptureStillImageOutput *stillImageOutput;
     } else if(jpegQuality > 1) {
         jpegQuality = 1;
     }
+    
     [stillImageOutput captureStillImageAsynchronouslyFromConnection:[stillImageOutput connectionWithMediaType:AVMediaTypeVideo] completionHandler:^(CMSampleBufferRef imageDataSampleBuffer, NSError *error) {
         if (imageDataSampleBuffer) {
             NSData *imageData = [AVCaptureStillImageOutput jpegStillImageNSDataRepresentation:imageDataSampleBuffer];
@@ -50,9 +51,15 @@ AVCaptureStillImageOutput *stillImageOutput;
             CGImageRef rotatedCGImage;
             // Get metadata orientation
             if ([[UIDevice currentDevice] orientation] == UIInterfaceOrientationLandscapeLeft) {
-                rotatedCGImage = [self newCGImageRotatedByAngle:CGImage angle:180];
+                if (self->_usingFrontCamera)
+                    rotatedCGImage = [self newCGImageRotatedByAngle:CGImage angle:0];
+                else
+                    rotatedCGImage = [self newCGImageRotatedByAngle:CGImage angle:180];
             } else {// if ([[UIDevice currentDevice] orientation] == UIInterfaceOrientationLandscapeRight) {
-                rotatedCGImage = [self newCGImageRotatedByAngle:CGImage angle:0];
+                if (self->_usingFrontCamera)
+                    rotatedCGImage = [self newCGImageRotatedByAngle:CGImage angle:180];
+                else
+                    rotatedCGImage = [self newCGImageRotatedByAngle:CGImage angle:0];
             }
             /*
             if (metadataOrientation == 6) {
@@ -269,6 +276,10 @@ AVCaptureStillImageOutput *stillImageOutput;
     // TODO: Extract fps from constraints.
     [_capturer startCaptureWithDevice:device format:format fps:DEFAULT_FPS];
     AVCaptureSession *capSession = _capturer.captureSession;
+    if (stillImageOutput != nil){
+        [capSession removeOutput:stillImageOutput];
+        stillImageOutput = nil;
+    }
     stillImageOutput = [[AVCaptureStillImageOutput alloc] init];
     [stillImageOutput setHighResolutionStillImageOutputEnabled:true];
     NSDictionary *outputSettings = @{ AVVideoCodecKey : AVVideoCodecJPEG};
@@ -285,7 +296,11 @@ AVCaptureStillImageOutput *stillImageOutput;
 
 -(void)stopCapture {
     [_capturer stopCapture];
-
+    
+    if (stillImageOutput != nil){
+        stillImageOutput = nil;
+    }
+    
     NSLog(@"[VideoCaptureController] Capture stopped");
 }
 
