@@ -1,11 +1,13 @@
 package com.oney.WebRTCModule;
 
+import android.graphics.Camera;
 import android.util.Log;
 
 import com.facebook.react.bridge.ReadableArray;
 import com.facebook.react.bridge.ReadableMap;
 import com.facebook.react.bridge.ReadableType;
 
+import org.webrtc.CameraCapturer;
 import org.webrtc.CameraEnumerator;
 import org.webrtc.CameraVideoCapturer;
 import org.webrtc.VideoCapturer;
@@ -19,6 +21,13 @@ public class VideoCaptureController {
      */
     private static final String TAG
         = VideoCaptureController.class.getSimpleName();
+
+
+    /**
+     * FIXME: To add doc
+     */
+    private final HandlerThread imageProcessingThread;
+    private Handler imageProcessingHandler;
 
     /**
      * Default values for width, height and fps (respectively) which will be
@@ -76,6 +85,10 @@ public class VideoCaptureController {
                 ? videoConstraintsMandatory.getInt("minFrameRate")
                 : DEFAULT_FPS;
         }
+
+        imageProcessingThread = new HandlerThread("SnapshotThread");
+        imageProcessingThread.start();
+        imageProcessingHandler = new Handler(imageProcessingThread.getLooper());
     }
 
     public void dispose() {

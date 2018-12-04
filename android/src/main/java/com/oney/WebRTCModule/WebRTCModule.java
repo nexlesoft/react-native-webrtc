@@ -961,4 +961,9 @@ public class WebRTCModule extends ReactContextBaseJavaModule {
             pco.dataChannelSend(dataChannelId, data, type);
         }
     }
+
+    @ReactMethod
+    public void takePicture(final ReadableMap options, final String trackId, final Callback successCallback, final Callback errorCallback){
+        getUserMediaImpl.takePicture(options, trackId, successCallback, errorCallback);
+    }
 }

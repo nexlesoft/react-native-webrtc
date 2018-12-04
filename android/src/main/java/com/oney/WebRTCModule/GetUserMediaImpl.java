@@ -479,4 +479,30 @@ class GetUserMediaImpl {
             this.videoCaptureController = videoCaptureController;
         }
     }
+
+    public void takePicture(final ReadableMap options, final String trackId, final Callback successCallback, final Callback errorCallback) {
+        if (!tracks.containsKey(trackId)) {
+            errorCallback.invoke("Invalid trackId " + trackId);
+            return ;
+        }
+
+        VideoCapturer vc = tracks.get(trackId).videoCaptureController.getVideoCapturer();
+
+        if ( !(vc instanceof CameraCapturer) ) {
+            errorCallback.invoke("Wrong class in package");
+        } else {
+            CameraCapturer camCap = (CameraCapturer) vc;
+            camCap.takeSnapshot(new CameraCapturer.SingleCaptureCallBack() {
+                @Override
+                public void captureSuccess(byte[] jpeg) {
+                    successCallback.invoke(Base64.encodeToString(jpeg, Base64.DEFAULT));
+                }
+
+                @Override
+                public void captureFailed(String err) {
+                    errorCallback.invoke(err);
+                }
+            });
+        }
+    }
 }
