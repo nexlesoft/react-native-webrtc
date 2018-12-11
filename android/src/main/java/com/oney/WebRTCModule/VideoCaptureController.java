@@ -15,6 +15,10 @@ import org.webrtc.VideoCapturer;
 import java.util.ArrayList;
 import java.util.List;
 
+import android.os.HandlerThread;
+import java.util.Base64;
+import android.os.Handler;
+
 public class VideoCaptureController {
     /**
      * The {@link Log} tag with which {@code VideoCaptureController} is to log.

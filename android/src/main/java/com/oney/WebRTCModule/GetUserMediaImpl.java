@@ -18,6 +18,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.Base64;
 
 import org.webrtc.*;
 
@@ -495,7 +496,7 @@ class GetUserMediaImpl {
             camCap.takeSnapshot(new CameraCapturer.SingleCaptureCallBack() {
                 @Override
                 public void captureSuccess(byte[] jpeg) {
-                    successCallback.invoke(Base64.encodeToString(jpeg, Base64.DEFAULT));
+                    successCallback.invoke(Base64.getEncoder().encodeToString(jpeg));
                 }
 
                 @Override
