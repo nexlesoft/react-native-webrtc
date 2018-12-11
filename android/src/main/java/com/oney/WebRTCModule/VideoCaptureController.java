@@ -15,9 +15,7 @@ import org.webrtc.VideoCapturer;
 import java.util.ArrayList;
 import java.util.List;
 
-import android.os.HandlerThread;
-import java.util.Base64;
-import android.os.Handler;
+
 
 public class VideoCaptureController {
     /**
@@ -27,11 +25,7 @@ public class VideoCaptureController {
         = VideoCaptureController.class.getSimpleName();
 
 
-    /**
-     * FIXME: To add doc
-     */
-    private final HandlerThread imageProcessingThread;
-    private Handler imageProcessingHandler;
+
 
     /**
      * Default values for width, height and fps (respectively) which will be
@@ -89,10 +83,6 @@ public class VideoCaptureController {
                 ? videoConstraintsMandatory.getInt("minFrameRate")
                 : DEFAULT_FPS;
         }
-
-        imageProcessingThread = new HandlerThread("SnapshotThread");
-        imageProcessingThread.start();
-        imageProcessingHandler = new Handler(imageProcessingThread.getLooper());
     }
 
     public void dispose() {
