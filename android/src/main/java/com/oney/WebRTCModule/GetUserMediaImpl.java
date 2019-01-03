@@ -20,6 +20,10 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.Base64;
 
+import android.os.HandlerThread;
+import java.util.Base64;
+import android.os.Handler;
+
 import org.webrtc.*;
 
 /**
@@ -37,6 +41,12 @@ class GetUserMediaImpl {
 
     private final CameraEnumerator cameraEnumerator;
     private final ReactApplicationContext reactContext;
+
+    /**
+     * FIXME: To add doc
+     */
+    private final HandlerThread imageProcessingThread;
+    private Handler imageProcessingHandler;
 
     /**
      * The application/library-specific private members of local
@@ -64,6 +74,10 @@ class GetUserMediaImpl {
             Log.d(TAG, "Creating video capturer using Camera1 API.");
             cameraEnumerator = new Camera1Enumerator(false);
         }
+
+        imageProcessingThread = new HandlerThread("SnapshotThread");
+        imageProcessingThread.start();
+        imageProcessingHandler = new Handler(imageProcessingThread.getLooper());
     }
 
     /**
@@ -503,7 +517,7 @@ class GetUserMediaImpl {
                 public void captureFailed(String err) {
                     errorCallback.invoke(err);
                 }
-            });
+            }, this.imageProcessingHandler);
         }
     }
 }
