@@ -37,7 +37,7 @@ function convertToNativeOptions(options){
   mutableDefaults.maxJpegQuality = MediaStreamTrack.defaults.maxJpegQuality;
   const mergedOptions = Object.assign(mutableDefaults, options);
   if (typeof mergedOptions.captureTarget === 'string') {
-    mergedOptions.captureTarget = WebRTCModule.CaptureTarget[options.captureTarget];
+    mergedOptions.captureTarget = MediaStreamTrack.constants.captureTarget[options.captureTarget];
   }
   return mergedOptions;
 }
