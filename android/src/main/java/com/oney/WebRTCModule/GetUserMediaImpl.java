@@ -18,6 +18,11 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.Base64;
+
+import android.os.HandlerThread;
+import java.util.Base64;
+import android.os.Handler;
 
 import org.webrtc.*;
 
@@ -36,6 +41,12 @@ class GetUserMediaImpl {
 
     private final CameraEnumerator cameraEnumerator;
     private final ReactApplicationContext reactContext;
+
+    /**
+     * FIXME: To add doc
+     */
+    private final HandlerThread imageProcessingThread;
+    private Handler imageProcessingHandler;
 
     /**
      * The application/library-specific private members of local
@@ -63,6 +74,10 @@ class GetUserMediaImpl {
             Log.d(TAG, "Creating video capturer using Camera1 API.");
             cameraEnumerator = new Camera1Enumerator(false);
         }
+
+        imageProcessingThread = new HandlerThread("SnapshotThread");
+        imageProcessingThread.start();
+        imageProcessingHandler = new Handler(imageProcessingThread.getLooper());
     }
 
     /**
@@ -477,6 +492,32 @@ class GetUserMediaImpl {
             this.track = track;
             this.mediaSource = mediaSource;
             this.videoCaptureController = videoCaptureController;
+        }
+    }
+
+    public void takePicture(final ReadableMap options, final String trackId, final Callback successCallback, final Callback errorCallback) {
+        if (!tracks.containsKey(trackId)) {
+            errorCallback.invoke("Invalid trackId " + trackId);
+            return ;
+        }
+
+        VideoCapturer vc = tracks.get(trackId).videoCaptureController.getVideoCapturer();
+
+        if ( !(vc instanceof CameraCapturer) ) {
+            errorCallback.invoke("Wrong class in package");
+        } else {
+            CameraCapturer camCap = (CameraCapturer) vc;
+            camCap.takeSnapshot(new CameraCapturer.SingleCaptureCallBack() {
+                @Override
+                public void captureSuccess(byte[] jpeg) {
+                    successCallback.invoke(Base64.getEncoder().encodeToString(jpeg));
+                }
+
+                @Override
+                public void captureFailed(String err) {
+                    errorCallback.invoke(err);
+                }
+            }, this.imageProcessingHandler);
         }
     }
 }
