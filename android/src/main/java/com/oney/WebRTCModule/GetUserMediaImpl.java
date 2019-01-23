@@ -20,6 +20,22 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.Base64;
 
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.graphics.Matrix;
+import android.graphics.Rect;
+import android.media.MediaScannerConnection;
+import android.net.Uri;
+import android.os.Environment;
+import android.os.HandlerThread;
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.lang.reflect.Field;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+import java.util.Collections;
+
 import android.os.HandlerThread;
 import java.util.Base64;
 import android.os.Handler;
@@ -56,6 +72,7 @@ class GetUserMediaImpl {
     private final Map<String, TrackPrivate> tracks = new HashMap<>();
 
     private final WebRTCModule webRTCModule;
+
 
     GetUserMediaImpl(
             WebRTCModule webRTCModule,
@@ -495,7 +512,126 @@ class GetUserMediaImpl {
         }
     }
 
+    private synchronized String savePicture(byte[] jpeg, int captureTarget, double maxJpegQuality, int maxSize) throws IOException {
+        // TODO: check if rotation is needed
+        //        int rotationAngle = currentFrame.rotationDegree;
+        String filename = UUID.randomUUID().toString();
+        File file = null;
+        switch (captureTarget) {
+            case WebRTCModule.RCT_CAMERA_CAPTURE_TARGET_CAMERA_ROLL: {
+                file = getOutputCameraRollFile(filename);
+                writePictureToFile(jpeg, file, maxSize, maxJpegQuality);
+                addToMediaStore(file.getAbsolutePath());
+                break;
+            }
+            case WebRTCModule.RCT_CAMERA_CAPTURE_TARGET_DISK: {
+                file = getOutputMediaFile(filename);
+                writePictureToFile(jpeg, file, maxSize, maxJpegQuality);
+                break;
+            }
+            case WebRTCModule.RCT_CAMERA_CAPTURE_TARGET_TEMP: {
+                file = getTempMediaFile(filename);
+                writePictureToFile(jpeg, file, maxSize, maxJpegQuality);
+                break;
+            }
+        }
+        return Uri.fromFile(file).toString();
+    }
+
+    private String writePictureToFile(byte[] jpeg, File file, int maxSize, double jpegQuality) throws IOException {
+        FileOutputStream output = new FileOutputStream(file);
+        output.write(jpeg);
+        output.close();
+        Matrix matrix = new Matrix();
+
+        Bitmap bitmap = BitmapFactory.decodeFile(file.getAbsolutePath());
+        // scale if needed
+        int width = bitmap.getWidth();
+        int height = bitmap.getHeight();
+        // only resize if image larger than maxSize
+        if (width > maxSize && width > maxSize) {
+            Rect originalRect = new Rect(0, 0, width, height);
+            Rect scaledRect = scaleDimension(originalRect, maxSize);
+            Log.d(TAG, "scaled width = " + scaledRect.width() + ", scaled height = " + scaledRect.height());
+            // calculate the scale
+            float scaleWidth = ((float) scaledRect.width()) / width;
+            float scaleHeight = ((float) scaledRect.height()) / height;
+            matrix.postScale(scaleWidth, scaleHeight);
+        }
+        FileOutputStream finalOutput = new FileOutputStream(file, false);
+        int compression = (int) (100 * jpegQuality);
+        Bitmap rotatedBitmap = Bitmap.createBitmap(bitmap, 0, 0, bitmap.getWidth(), bitmap.getHeight(), matrix, true);
+        rotatedBitmap.compress(Bitmap.CompressFormat.JPEG, compression, finalOutput);
+        finalOutput.close();
+        return file.getAbsolutePath();
+    }
+    private File getOutputMediaFile(String fileName) {
+        // Get environment directory type id from requested media type.
+        String environmentDirectoryType;
+        environmentDirectoryType = Environment.DIRECTORY_PICTURES;
+        return getOutputFile(
+                fileName + ".jpeg",
+                Environment.getExternalStoragePublicDirectory(environmentDirectoryType)
+        );
+    }
+    private File getOutputCameraRollFile(String fileName) {
+        return getOutputFile(
+                fileName + ".jpeg",
+                Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DCIM)
+        );
+    }
+    private File getOutputFile(String fileName, File storageDir) {
+        // Create the storage directory if it does not exist
+        if (!storageDir.exists()) {
+            if (!storageDir.mkdirs()) {
+                Log.e(TAG, "failed to create directory:" + storageDir.getAbsolutePath());
+                return null;
+            }
+        }
+        return new File(String.format("%s%s%s", storageDir.getPath(), File.separator, fileName));
+    }
+    private File getTempMediaFile(String fileName) {
+        try {
+            File outputDir = getReactApplicationContext().getCacheDir();
+            File outputFile;
+            outputFile = File.createTempFile(fileName, ".jpg", outputDir);
+            return outputFile;
+        } catch (Exception e) {
+            Log.e(TAG, e.getMessage());
+            return null;
+        }
+    }
+    private void addToMediaStore(String path) {
+        MediaScannerConnection.scanFile(getReactApplicationContext(), new String[]{path}, null, null);
+    }
+
+    private static Rect scaleDimension(Rect originalRect, int maxSize) {
+        int originalWidth = originalRect.width();
+        int originalHeight = originalRect.height();
+        int newWidth = originalWidth;
+        int newHeight = originalHeight;
+        // first check if we need to scale width
+        if (originalWidth > maxSize) {
+            //scale width to fit
+            newWidth = maxSize;
+            //scale height to maintain aspect ratio
+            newHeight = (newWidth * originalHeight) / originalWidth;
+        }
+        // then check if we need to scale even with the new height
+        if (newHeight > maxSize) {
+            //scale height to fit instead
+            newHeight = maxSize;
+            //scale width to maintain aspect ratio
+            newWidth = (newHeight * originalWidth) / originalHeight;
+        }
+        return new Rect(0, 0, newWidth, newHeight);
+    }
+
     public void takePicture(final ReadableMap options, final String trackId, final Callback successCallback, final Callback errorCallback) {
+        final int captureTarget = options.getInt("captureTarget");
+        final double maxJpegQuality = options.getDouble("maxJpegQuality");
+        final int maxSize = options.getInt("maxSize");
+
         if (!tracks.containsKey(trackId)) {
             errorCallback.invoke("Invalid trackId " + trackId);
             return ;
@@ -508,9 +644,21 @@ class GetUserMediaImpl {
         } else {
             CameraCapturer camCap = (CameraCapturer) vc;
             camCap.takeSnapshot(new CameraCapturer.SingleCaptureCallBack() {
+
                 @Override
                 public void captureSuccess(byte[] jpeg) {
-                    successCallback.invoke(Base64.getEncoder().encodeToString(jpeg));
+                    if (captureTarget == WebRTCModule.RCT_CAMERA_CAPTURE_TARGET_MEMORY)
+                        successCallback.invoke(Base64.getEncoder().encodeToString(jpeg));
+                    else {
+                        try {
+                            String path = savePicture(jpeg, captureTarget, maxJpegQuality, maxSize);
+                            successCallback.invoke(path);
+                        } catch (IOException e){
+                            String message = "Error saving picture";
+                            Log.d(TAG, message, e);
+                            errorCallback.invoke(message);
+                        }
+                    }
                 }
 
                 @Override

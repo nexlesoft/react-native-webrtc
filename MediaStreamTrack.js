@@ -20,13 +20,14 @@ const MEDIA_STREAM_TRACK_EVENTS = [
 type MediaStreamTrackState = "live" | "ended";
 
 type SourceInfo = {
-  id: string;
-  label: string;
-  facing: string;
-  kind: string;
+  id: string,
+  label: string,
+  facing: string,
+  kind: string
 };
 
 type SnapshotOptions = {
+  captureTarget: string,
   maxSize: number,
   maxJpegQuality: number,
 };
@@ -37,7 +38,7 @@ function convertToNativeOptions(options){
   mutableDefaults.maxJpegQuality = MediaStreamTrack.defaults.maxJpegQuality;
   const mergedOptions = Object.assign(mutableDefaults, options);
   if (typeof mergedOptions.captureTarget === 'string') {
-    mergedOptions.captureTarget = MediaStreamTrack.constants.captureTarget[options.captureTarget];
+    mergedOptions.captureTarget = WebRTCModule.CaptureTarget[options.captureTarget];
   }
   return mergedOptions;
 }
