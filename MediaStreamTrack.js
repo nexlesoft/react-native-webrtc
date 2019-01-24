@@ -20,13 +20,14 @@ const MEDIA_STREAM_TRACK_EVENTS = [
 type MediaStreamTrackState = "live" | "ended";
 
 type SourceInfo = {
-  id: string;
-  label: string;
-  facing: string;
-  kind: string;
+  id: string,
+  label: string,
+  facing: string,
+  kind: string
 };
 
 type SnapshotOptions = {
+  captureTarget: string,
   maxSize: number,
   maxJpegQuality: number,
 };

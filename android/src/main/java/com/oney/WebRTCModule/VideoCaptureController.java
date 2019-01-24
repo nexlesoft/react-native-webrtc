@@ -24,9 +24,6 @@ public class VideoCaptureController {
     private static final String TAG
         = VideoCaptureController.class.getSimpleName();
 
-
-
-
     /**
      * Default values for width, height and fps (respectively) which will be
      * used to open the camera at.
