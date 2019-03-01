@@ -21,6 +21,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Collections;
 
 import org.webrtc.*;
 
@@ -959,5 +960,33 @@ public class WebRTCModule extends ReactContextBaseJavaModule {
         } else {
             pco.dataChannelSend(dataChannelId, data, type);
         }
+    }
+
+    public static final int RCT_CAMERA_CAPTURE_TARGET_MEMORY = 0;
+    public static final int RCT_CAMERA_CAPTURE_TARGET_DISK = 1;
+    public static final int RCT_CAMERA_CAPTURE_TARGET_CAMERA_ROLL = 2;
+    public static final int RCT_CAMERA_CAPTURE_TARGET_TEMP = 3;
+
+    @Override
+    public Map<String, Object> getConstants() {
+        final Map<String, Object> constants = new HashMap<>();
+        constants.put("CaptureTarget", getCaptureTargetConstants());
+        return constants;
+    }
+
+    private Map<String, Object> getCaptureTargetConstants() {
+        return Collections.unmodifiableMap(new HashMap<String, Object>() {
+            {
+                put("memory", RCT_CAMERA_CAPTURE_TARGET_MEMORY);
+                put("temp", RCT_CAMERA_CAPTURE_TARGET_TEMP);
+                put("cameraRoll", RCT_CAMERA_CAPTURE_TARGET_CAMERA_ROLL);
+                put("disk", RCT_CAMERA_CAPTURE_TARGET_DISK);
+            }
+        });
+    }
+
+    @ReactMethod
+    public void takePicture(final ReadableMap options, final String trackId, final Callback successCallback, final Callback errorCallback){
+        getUserMediaImpl.takePicture(options, trackId, successCallback, errorCallback);
     }
 }

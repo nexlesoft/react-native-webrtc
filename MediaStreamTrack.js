@@ -25,6 +25,22 @@ type SourceInfo = {
   kind: string;
 };
 
+type SnapshotOptions = {
+  maxSize: number,
+  maxJpegQuality: number,
+};
+
+function convertToNativeOptions(options){
+  let mutableDefaults = {};
+  mutableDefaults.maxSize = MediaStreamTrack.defaults.maxSize;
+  mutableDefaults.maxJpegQuality = MediaStreamTrack.defaults.maxJpegQuality;
+  const mergedOptions = Object.assign(mutableDefaults, options);
+  if (typeof mergedOptions.captureTarget === 'string') {
+    mergedOptions.captureTarget = MediaStreamTrack.constants.captureTarget[options.captureTarget];
+  }
+  return mergedOptions;
+}
+
 class MediaStreamTrack extends EventTarget(MEDIA_STREAM_TRACK_EVENTS) {
   _enabled: boolean;
   id: string;
@@ -40,6 +56,20 @@ class MediaStreamTrack extends EventTarget(MEDIA_STREAM_TRACK_EVENTS) {
   onmute: ?Function;
   onunmute: ?Function;
   overconstrained: ?Function;
+
+  static constants = {
+    captureTarget: {
+      memory: 'memory',
+      temp: 'temp',
+      disk: 'disk',
+      cameraRoll: 'cameraRoll'
+    }
+  };
+  static defaults = {
+    captureTarget: MediaStreamTrack.constants.captureTarget.temp,
+    maxSize: 2000,
+    maxJpegQuality: 1
+  };
 
   constructor(info) {
     super();
@@ -94,6 +124,11 @@ class MediaStreamTrack extends EventTarget(MEDIA_STREAM_TRACK_EVENTS) {
       throw new Error('Only implemented for video tracks');
     }
     WebRTCModule.mediaStreamTrackSwitchCamera(this.id);
+  }
+
+  takePicture(options: SnapshotOptions, success: (any) => {}, error: (any) => {}) {
+    let nativeOptions = convertToNativeOptions(options);
+    WebRTCModule.takePicture(nativeOptions, this.id, success, error);
   }
 
   applyConstraints() {

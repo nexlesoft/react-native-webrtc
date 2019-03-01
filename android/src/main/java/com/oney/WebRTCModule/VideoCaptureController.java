@@ -13,6 +13,9 @@ import org.webrtc.VideoCapturer;
 import java.util.ArrayList;
 import java.util.List;
 
+import android.graphics.Camera;
+import org.webrtc.CameraCapturer;
+
 public class VideoCaptureController {
     /**
      * The {@link Log} tag with which {@code VideoCaptureController} is to log.
