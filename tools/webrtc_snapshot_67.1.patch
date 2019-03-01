@@ -1,0 +1,255 @@
+diff --git a/sdk/android/src/java/org/webrtc/Camera1Session.java b/sdk/android/src/java/org/webrtc/Camera1Session.java
+index fff63a9332..8a1be8777b 100644
+--- a/sdk/android/src/java/org/webrtc/Camera1Session.java
++++ b/sdk/android/src/java/org/webrtc/Camera1Session.java
+@@ -11,6 +11,7 @@
+ package org.webrtc;
+ 
+ import android.content.Context;
++import android.hardware.Camera;
+ import android.media.MediaRecorder;
+ import android.os.Handler;
+ import android.os.SystemClock;
+@@ -24,7 +25,7 @@ import java.util.concurrent.TimeUnit;
+ import org.webrtc.CameraEnumerationAndroid.CaptureFormat;
+ 
+ @SuppressWarnings("deprecation")
+-class Camera1Session implements CameraSession {
++public class Camera1Session implements CameraSession {
+   private static final String TAG = "Camera1Session";
+   private static final int NUMBER_OF_CAPTURE_BUFFERS = 3;
+ 
+@@ -356,4 +357,16 @@ class Camera1Session implements CameraSession {
+       throw new IllegalStateException("Wrong thread");
+     }
+   }
++
++  @Override
++  public void processSingleRequest(CameraCapturer.SingleCaptureCallBack callback, Handler captureHandler) {
++    camera.takePicture(null, null, new Camera.PictureCallback() {
++    @Override
++    public void onPictureTaken(final byte[] data, Camera camera) {
++        camera.startPreview();
++        captureHandler.post(() -> callback.captureSuccess(data));
++      }
++    });
++  }
++
+ }
+diff --git a/sdk/android/src/java/org/webrtc/Camera2Session.java b/sdk/android/src/java/org/webrtc/Camera2Session.java
+index b7bb5bdb88..510337e950 100644
+--- a/sdk/android/src/java/org/webrtc/Camera2Session.java
++++ b/sdk/android/src/java/org/webrtc/Camera2Session.java
+@@ -11,30 +11,28 @@
+ package org.webrtc;
+ 
+ import android.annotation.TargetApi;
++import android.graphics.ImageFormat;
+ import android.content.Context;
+ import android.graphics.Matrix;
+ import android.graphics.SurfaceTexture;
+-import android.hardware.camera2.CameraAccessException;
+-import android.hardware.camera2.CameraCaptureSession;
+-import android.hardware.camera2.CameraCharacteristics;
+-import android.hardware.camera2.CameraDevice;
+-import android.hardware.camera2.CameraManager;
+-import android.hardware.camera2.CameraMetadata;
+-import android.hardware.camera2.CaptureFailure;
+-import android.hardware.camera2.CaptureRequest;
++import android.hardware.camera2.*;
++import android.media.Image;
++import android.media.ImageReader;
+ import android.media.MediaRecorder;
+ import android.os.Handler;
+ import javax.annotation.Nullable;
+ import android.util.Range;
+ import android.view.Surface;
+ import android.view.WindowManager;
++
++import java.nio.ByteBuffer;
+ import java.util.ArrayList;
+ import java.util.List;
+ import java.util.concurrent.TimeUnit;
+ import org.webrtc.CameraEnumerationAndroid.CaptureFormat;
+ 
+ @TargetApi(21)
+-class Camera2Session implements CameraSession {
++public class Camera2Session implements CameraSession {
+   private static final String TAG = "Camera2Session";
+ 
+   private static final Histogram camera2StartTimeMsHistogram =
+@@ -46,6 +44,8 @@ class Camera2Session implements CameraSession {
+ 
+   private static enum SessionState { RUNNING, STOPPED }
+ 
++  @Nullable private ImageReader imageReader;
++
+   private final Handler cameraThreadHandler;
+   private final CreateSessionCallback callback;
+   private final Events events;
+@@ -129,6 +129,7 @@ class Camera2Session implements CameraSession {
+       surface = new Surface(surfaceTexture);
+       List<Surface> surfaces = new ArrayList<Surface>();
+       surfaces.add(surface);
++      surfaces.add(imageReader.getSurface());
+       if (mediaRecorderSurface != null) {
+         Logging.d(TAG, "Add MediaRecorder surface to capture session.");
+         surfaces.add(mediaRecorderSurface);
+@@ -302,6 +303,31 @@ class Camera2Session implements CameraSession {
+     new Camera2Session(callback, events, applicationContext, cameraManager, surfaceTextureHelper,
+         mediaRecorder, cameraId, width, height, framerate);
+   }
++  
++  private void initImageReader(){
++    List<Size> sizes = Camera2Enumerator.getSupportedSizes(cameraCharacteristics);
++    Size maxSize = sizes.get(0);
++    Size maxSize16_9 = null;
++    for (Size s : sizes) {
++      if (s.height * s.width > maxSize.height * maxSize.width ) {
++        maxSize = s;
++      }
++      
++      if (s.height * 16 == s.width * 9 && (maxSize16_9 == null || s.height * s.width > maxSize16_9.height * maxSize16_9.width)) {
++          maxSize16_9 = s;
++      }
++    }
++
++    if (this.imageReader != null) {
++      // dispose it
++      this.imageReader.close();
++      this.imageReader = null;
++    }
++    if (maxSize16_9 != null)
++        this.imageReader = ImageReader.newInstance(maxSize16_9.width, maxSize16_9.height, ImageFormat.JPEG, 1);
++    else
++        this.imageReader = ImageReader.newInstance(maxSize.width, maxSize.height, ImageFormat.JPEG, 1);
++  }
+ 
+   private Camera2Session(CreateSessionCallback callback, Events events, Context applicationContext,
+       CameraManager cameraManager, SurfaceTextureHelper surfaceTextureHelper,
+@@ -322,6 +348,7 @@ class Camera2Session implements CameraSession {
+     this.width = width;
+     this.height = height;
+     this.framerate = framerate;
++    this.imageReader = null; // imageReader will be initialized in start
+ 
+     start();
+   }
+@@ -342,6 +369,9 @@ class Camera2Session implements CameraSession {
+ 
+     findCaptureFormat();
+     openCamera();
++
++    // FIXME: to avoid camera switching and invalid imageReader issue
++    initImageReader();
+   }
+ 
+   private void findCaptureFormat() {
+@@ -469,4 +499,57 @@ class Camera2Session implements CameraSession {
+       throw new IllegalStateException("Wrong thread");
+     }
+   }
++
++  @Override
++  public void processSingleRequest(CameraCapturer.SingleCaptureCallBack captureCallback, Handler captureHandler) {
++    try {
++      final CaptureRequest.Builder captureRequestBuilder = cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE);
++
++      captureRequestBuilder.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON);
++      captureRequestBuilder.set(CaptureRequest.CONTROL_AE_LOCK, false);
++
++      captureRequestBuilder.addTarget(imageReader.getSurface());
++      final ImageReader imgR = this.imageReader;
++      imgR.setOnImageAvailableListener(new ImageReader.OnImageAvailableListener(){
++        @Override
++        public void onImageAvailable(ImageReader reader) {
++          Logging.d(TAG, "SNAPSHOT: Image available");
++          Image image = null;
++          try {
++            image = imgR.acquireLatestImage();
++            if (image == null) {
++              captureCallback.captureFailed("No available image from ImageReader");
++              return ;
++            }
++
++            ByteBuffer buffer = image.getPlanes()[0].getBuffer();
++            byte[] imageBytes = new byte[buffer.remaining()];
++            buffer.get(imageBytes);
++            captureCallback.captureSuccess(imageBytes);
++          } catch (Exception e) {
++              Logging.d(TAG, "SNAPSHOT: Image acquire/conversion failed, due to " + e.toString());
++              if (image != null){
++                  image.close();
++              }
++          }
++        }
++      }, captureHandler);
++
++      captureSession.capture(captureRequestBuilder.build(), new CameraCaptureSession.CaptureCallback() {
++        @Override
++        public void onCaptureCompleted(CameraCaptureSession session, CaptureRequest request, TotalCaptureResult result) {
++          Logging.d(TAG, "SNAPSHOT: capture completed");
++        }
++
++        @Override
++        public void onCaptureFailed(CameraCaptureSession session, CaptureRequest request, CaptureFailure failure) {
++          Logging.d(TAG, "SNAPSHOT: capture failed due to " + failure.toString());
++          captureHandler.post(() -> captureCallback.captureFailed(failure.toString()) );
++        }
++      }, null); // capture as in "current" thread
++    } catch (CameraAccessException e) {
++      Logging.e(TAG, "SNAPSHOT: failed due to " + e.getReason() + ":" + e.getMessage());
++      // reportError("Failed to start capture request. " + e);
++    }
++  }
+ }
+diff --git a/sdk/android/src/java/org/webrtc/CameraCapturer.java b/sdk/android/src/java/org/webrtc/CameraCapturer.java
+index cc8cc01437..ed969fe516 100644
+--- a/sdk/android/src/java/org/webrtc/CameraCapturer.java
++++ b/sdk/android/src/java/org/webrtc/CameraCapturer.java
+@@ -18,7 +18,7 @@ import javax.annotation.Nullable;
+ import java.util.Arrays;
+ 
+ @SuppressWarnings("deprecation")
+-abstract class CameraCapturer implements CameraVideoCapturer {
++public abstract class CameraCapturer implements CameraVideoCapturer {
+   enum SwitchState {
+     IDLE, // No switch requested.
+     PENDING, // Waiting for previous capture session to open.
+@@ -559,4 +559,16 @@ abstract class CameraCapturer implements CameraVideoCapturer {
+       CameraSession.CreateSessionCallback createSessionCallback, CameraSession.Events events,
+       Context applicationContext, SurfaceTextureHelper surfaceTextureHelper,
+       MediaRecorder mediaRecoder, String cameraName, int width, int height, int framerate);
++
++  public interface SingleCaptureCallBack {
++    void captureSuccess(byte[] jpeg);
++    void captureFailed(String error);
++  }
++
++  public void takeSnapshot(CameraCapturer.SingleCaptureCallBack callback, Handler captureHandler) {
++    synchronized (stateLock) {
++      currentSession.processSingleRequest(callback, captureHandler);
++    }
++  }
++
+ }
+diff --git a/sdk/android/src/java/org/webrtc/CameraSession.java b/sdk/android/src/java/org/webrtc/CameraSession.java
+index eec3ed2681..5155c38d32 100644
+--- a/sdk/android/src/java/org/webrtc/CameraSession.java
++++ b/sdk/android/src/java/org/webrtc/CameraSession.java
+@@ -10,6 +10,8 @@
+ 
+ package org.webrtc;
+ 
++import android.os.Handler;
++
+ interface CameraSession {
+   enum FailureType { ERROR, DISCONNECTED }
+ 
+@@ -33,4 +35,6 @@ interface CameraSession {
+    * If waitCameraStop is true, also waits for the camera to stop.
+    */
+   void stop();
++
++  void processSingleRequest(CameraCapturer.SingleCaptureCallBack callback, Handler captureHandler);
+ }
